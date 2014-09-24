@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
@@ -32,7 +33,14 @@ var (
 )
 
 func genHash(cert *x509.Certificate) (hash string, err error) {
-	sum := sha256.Sum256(cert.RawSubjectPublicKeyInfo)
+	pk := cert.PublicKey.(*rsa.PublicKey)
+	// since python doesn't make it easy to get the raw Subject Public Key Info
+	// or really do anything with it, going for a more esoteric fix of building
+	// a byte array from the key elements.
+	log.Printf("%v\n", pk.N)
+	b := pk.N.Bytes()
+	b = append(b, byte(pk.E))
+	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:]), nil
 }
 
@@ -84,8 +92,11 @@ func getSigFromHost(url *url.URL) (source, hash string, err error) {
 		log.Printf("Host returned invalid response: %s %s\n", url.String(), resp.Status)
 		return "", "", ErrNotHTTPS
 	}
+	//log.Printf("%+v\n", resp.TLS)
 	cert := resp.TLS.VerifiedChains[0][0]
+	//cert := resp.TLS.PeerCertificates[0]
 	hash, err = genHash(cert)
+	log.Printf("Subject %+v\n", cert.Subject)
 	return cert.Subject.Organization[0], hash, err
 }
 
